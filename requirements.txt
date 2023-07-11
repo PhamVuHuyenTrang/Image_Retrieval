@@ -1,0 +1,6 @@
+faiss-cpu
+faiss-gpu
+gradio 
+yolov5
+datasets==2.9
+transformers
