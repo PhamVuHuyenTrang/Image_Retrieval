@@ -66,7 +66,7 @@ def reranking(image1, image2s, initial, model="ShuffleNet"):
     def merge_height(image1, image2):
         new_image = Image.new("RGB", (IMG_SIZE, IMG_SIZE), (250, 250, 250))
         new_image.paste(image1,(0,0))
-        new_image.paste(image2,(int(IMG_SIZE)/2,0))
+        new_image.paste(image2,(int(IMG_SIZE/2),0))
         return new_image
     
     
