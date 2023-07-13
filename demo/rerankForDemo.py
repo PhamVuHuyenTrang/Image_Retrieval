@@ -19,7 +19,7 @@ class Initial:
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ])
             self.model = rerankingShuffleNet()
-            version = None
+            version = None #"186851c55c5ec6d253121848c681f3feaf0537bd"
             path = hf_hub_download(repo_id="Huy1432884/rerankingShuffleNet",
                 filename="model.bin", 
                 use_auth_token="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", 

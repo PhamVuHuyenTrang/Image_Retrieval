@@ -38,14 +38,14 @@ class ObjectDetection:
         }
 
     def load_model(self):
-        hf_hub_download(
+        path = hf_hub_download(
             repo_id="Huy1432884/ODYolov5m",
             filename="model.pt",
             use_auth_token="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",
-            local_dir="kaggle/working/",
+            #local_dir="kaggle/working/",
             revision=None
         )
-        model = yolov5.load("kaggle/working/model.pt")
+        model = yolov5.load(path)
         model.conf = 0.15
         model.iou = 0.45
         model.agnostic = False

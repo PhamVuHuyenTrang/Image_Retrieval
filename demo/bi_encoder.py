@@ -1,3 +1,4 @@
+from token import tok_name
 from transformers import ViTImageProcessor, ViTForImageClassification, ViTModel
 from PIL import Image
 import torch
@@ -13,6 +14,8 @@ from datasets import Dataset
 import pandas as pd
 import faiss
 from multiprocessing import Pool
+from copy import deepcopy
+import numpy as np
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -125,18 +128,19 @@ class bi_encoder:
         paths = []
         for batch in iters:
             with torch.no_grad():
-                embeddings.append(self.extractor(batch["img"].to(device))[0].mean(dim=1))
+                embeddings.append(self.extractor(batch["img"].to(device))[0][:,0,:])#.mean(dim=1))
                 paths.extend(batch["path"])
         embeddings = torch.cat(embeddings, dim=0)
+        #norm embeddings
         embeddings = F.normalize(embeddings, p=2, dim=1)
         embeddings_dataset = Dataset.from_pandas(pd.DataFrame({"embeddings":[i.detach().cpu().numpy() for i in embeddings],
                                                     "paths":paths}))
         
-        embeddings_dataset.add_faiss_index(column="embeddings", metric_type=faiss.METRIC_L2)
+        embeddings_dataset.add_faiss_index(column="embeddings", metric_type=faiss.METRIC_INNER_PRODUCT)
 
         self.embeddings_dataset = embeddings_dataset
     
-    def get_embedding(self, images):
+    def get_embedding(self, images, close=True):
         topil = T.ToPILImage()
         def norm(image):
             #image = topil(torch.permute(torch.tensor(image),(2, 0,1)))
@@ -156,25 +160,45 @@ class bi_encoder:
             lst_imgs.append(topil(norm(img)[0]))
 
         imgs = self.process(lst_imgs, return_tensors="pt" )["pixel_values"]
-        #for img in images:
-        #    img.close()
-
-        return F.normalize(self.extractor(imgs.to(device))[0].mean(dim=1), p=2, dim=1).cpu().detach().numpy()
+        if close:
+            for img in images:
+                img.close()
+        
+        #return self.extractor(imgs.to(device))[0].mean(dim=1).cpu().detach().numpy()
+        return F.normalize(self.extractor(imgs.to(device))[0][:, 0,:], p=2, dim=1).cpu().detach().numpy()
     
-    def search_images_from_image(self, image, topk=100):
-        query = self.get_embedding([image])
-        scores, samples = self.embeddings_dataset.get_nearest_examples(
-        "embeddings", query, k=topk
-    )
-        return multi_parse([os.path.join(i) for i in samples["paths"]]), scores
+    def search_images_from_image(self, image, topk=100, close=True, label=None):
+        query = self.get_embedding([image], close=close)
+        #if label is not None:
+        #    label = label.replace("_", "/")
+        subdataset = self.embeddings_dataset
+        if label is None:
+            scores, samples = self.embeddings_dataset.get_nearest_examples(
+            "embeddings", query, k=topk
+        )
+        else:
+            scores, samples = [], {"paths":[]}
+            for idx, i in enumerate(subdataset["paths"]):
+                if label in i.replace("/", "_"):
+                    samples["paths"].append(i)
+                    scores.append(np.sum(query[0]*np.array(subdataset[idx]["embeddings"])))
+            ndices = np.argsort(np.array(scores))
+            samples["paths"] = [samples["paths"][i] for i in ndices[::-1][:topk]]
+            scores = [scores[i] for i in ndices[::-1][:topk]]
+        return [Image.open(os.path.join(i)) for i in samples["paths"]], scores
 
-    def search_images_from_batch_image(self, imgs, topk=100):
+    def search_images_from_batch_image(self, imgs, topk=100, close=True):
         results = []
-        queries = self.get_embedding(imgs)
+        queries = self.get_embedding(imgs, close=close)
+        used = {}
         for query in queries:
             scores, samples = self.embeddings_dataset.get_nearest_examples(
                     "embeddings", query, k=topk
                 )
-            results.append(([Image.open(os.path.join(i)) for i in samples["paths"]], scores))
+            #print(samples["paths"])
+            #for i in samples["paths"]:
+            #    if i not in used:
+            #        used[i] = Image.open(os.path.join(i))
+            results.append((samples["paths"], scores))
         return results 
 
